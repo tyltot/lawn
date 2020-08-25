@@ -28,6 +28,7 @@ body {
 .titleDeal {
 	display: flex;
 	letter-spacing: 2rem;
+	user-select: none;
 }
 .instructions {
 	position: absolute;
