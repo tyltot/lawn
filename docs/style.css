@@ -33,8 +33,10 @@ body {
 }
 .titleDeal {
 	display: flex;
-	letter-spacing: 2rem;
-	user-select: none;
+    letter-spacing: 3rem;
+    user-select: none;
+    text-align: center;
+    text-indent: 3rem;
 }
 .instructions {
 	position: absolute;
