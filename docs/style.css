@@ -3,6 +3,12 @@ body {
     margin: 0;
 		overflow: hidden;
 }
+.player {
+	position: absolute;
+	left: 33%;
+    bottom: 0%;
+    right: 33%;
+}
 .label {
 	position: absolute;
 	top: 0;
