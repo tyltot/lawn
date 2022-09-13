@@ -24,12 +24,12 @@ var bladeWidth = 0.12;
 var bladeHeight = 1;
 
 //Patch side length
-var width = 120;
+var width = 100;
 //Number of vertices on ground plane side
 var resolution = 64;
 //Distance between two ground plane vertices
 var delta = width/resolution;
-//Radius of the sphere onto which the ground plane is bended
+//Radius of the sphere onto which the ground plane is bent
 var radius = 240;
 //User movement speed
 var speed = 3;
@@ -50,9 +50,9 @@ if(mobile){
 //Height over horizon in range [0, PI/2.0]
 var elevation = 0.2;
 //Rotation around Y axis in range [0, 2*PI]
-var azimuth = 0.77;
+var azimuth = 0.4;
 
-var fogFade = 0.005;
+var fogFade = 0.009;
 
 //Lighting variables for grass
 var ambientStrength = 0.7;
@@ -78,7 +78,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize( window.innerWidth, window.innerHeight );
 
 //Camera
-distance = 1500;
+var distance = 1500;
 
 var FOV = 45;//2 * Math.atan(window.innerHeight / distance) * 180 / Math.PI;
 var camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 1, 20000);
@@ -94,7 +94,7 @@ var ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
 //OrbitControls.js for camera manipulation
-controls = new THREE.OrbitControls(camera, renderer.domElement);
+var controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.autoRotate = rotate;
 controls.autoRotateSpeed = 1.0;
 controls.maxDistance = 65.0;
@@ -104,6 +104,7 @@ if(mobile){
 controls.minDistance = 5.0;
 //Disable keys to stop arrow keys from moving the camera
 controls.enableKeys = false;
+controls.enablePan = false;
 controls.update();
 
 const stats = new Stats();
@@ -114,6 +115,7 @@ stats.domElement.style.bottom = '0px';
 document.body.appendChild(stats.domElement);
 
 //************* GUI ***************
+
 var gui = new dat.GUI();
 gui.add(this, 'radius').min(85).max(1000).step(5);
 gui.add(this, 'speed').min(0.5).max(10).step(0.01);
@@ -127,7 +129,6 @@ function onWindowResize(){
   camera.aspect = window.innerWidth / window.innerHeight;
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	backgroundMaterial.uniforms.resolution.value = new THREE.Vector2(canvas.width, canvas.height);
-	//FOV = 2 * Math.atan(window.innerHeight / distance) * 180 / Math.PI;
 	camera.fov = FOV;
 	camera.updateProjectionMatrix();
 	backgroundMaterial.uniforms.fov.value = FOV;
@@ -177,7 +178,7 @@ const backgroundMaterial = new THREE.ShaderMaterial({
 			//Make horizon more hazy
 			float dist = 4000.0;
 			if(abs(rayDir.y) < 0.0001){rayDir.y = 0.0001;}
-			float fogAmount = 1.0 * exp(-rayOri.y*fogFade) * (1.0-exp(-dist*rayDir.y*fogFade))/rayDir.y;
+			float fogAmount = 1.0 * exp(-rayOri.y*fogFade) * (1.0-exp(-dist*rayDir.y*fogFade))/(rayDir.y*fogFade);
 			float sunAmount = max( dot( rayDir, sunDir ), 0.0 );
 			vec3 fogColor  = mix(vec3(0.35, 0.5, 0.9), vec3(1.0, 1.0, 0.75), pow(sunAmount, 16.0) );
 		return mix(rgb, fogColor, clamp(fogAmount, 0.0, 1.0));
@@ -261,7 +262,7 @@ var groundGeometry = new THREE.PlaneBufferGeometry(width, width, resolution, res
 groundGeometry.setAttribute('basePosition', groundBaseGeometry.getAttribute("position"));
 groundGeometry.lookAt(new THREE.Vector3(0,1,0));
 groundGeometry.verticesNeedUpdate = true;
-var groundMaterial = new THREE.MeshPhongMaterial({color: 0x000900});
+var groundMaterial = new THREE.MeshPhongMaterial({color: new THREE.Color("rgb(10%, 25%, 2%)")});
 
 var sharedPrefix = `
 uniform sampler2D noiseTexture;
@@ -379,6 +380,10 @@ varying vec3 vPosition;
 varying float frc;
 varying float idx;
 
+const float PI = 3.1415;
+const float TWO_PI = 2.0 * PI;
+
+
 //https://www.geeks3d.com/20141201/how-to-rotate-a-vertex-by-a-quaternion-in-glsl/
 vec3 rotateVectorByQuaternion(vec3 v, vec4 q){
   return 2.0 * cross(q.xyz, v * q.w + cross(q.xyz, v)) + v;
@@ -432,11 +437,16 @@ void main() {
 	pos.y = max(0.0, placeOnSphere(pos)) - radius;
 	pos.y += getYPosition(vec2(pos.x+delta*posX, pos.z+delta*posZ));
 	
-	//Wind is sine waves in time
-	float noise = sin(0.1 * pos.x + time);
-	float halfAngle = noise * 0.1;
-	noise = 0.5 + 0.5 * cos(0.05 * pos.x + 0.25 * time);
-	halfAngle -= noise * 0.2;
+	//Position of the blade in the visible patch [0->1]
+  vec2 fractionalPos = 0.5 + offset.xz / width;
+  //To make it seamless, make it a multiple of 2*PI
+  fractionalPos *= TWO_PI;
+
+  //Wind is sine waves in time. 
+  float noise = 0.5 + 0.5 * sin(fractionalPos.x + time);
+  float halfAngle = -noise * 0.1;
+  noise = 0.5 + 0.5 * cos(fractionalPos.y + time);
+  halfAngle -= noise * 0.05;
 
 	direction = normalize(vec4(sin(halfAngle), 0.0, -sin(halfAngle), cos(halfAngle)));
 
@@ -509,8 +519,8 @@ void main() {
 	vec3 textureColour = pow(texture2D(map, vUv).rgb, vec3(2.2));
 
   //Add different green tones towards root
-	vec3 mixColour = idx > 0.75 ? vec3(0.07, 0.52, 0.06) : vec3(0.07, 0.43, 0.08);
-  textureColour = mix(pow(mixColour, vec3(2.2)), textureColour, frc);
+	vec3 mixColour = idx > 0.75 ? vec3(0.2, 0.8, 0.06) : vec3(0.5, 0.8, 0.08);
+  textureColour = mix(0.1 * mixColour, textureColour, 0.75);
 
 	vec3 lightTimesTexture = lightColour * textureColour;
   vec3 ambient = textureColour;
@@ -523,7 +533,7 @@ void main() {
   //Colour when lit by light
   vec3 diffuse = diff * lightTimesTexture;
 
-  float sky = max(dot(normal, vec3(0,1,0)), 0.0);
+  float sky = max(dot(normal, vec3(0, 1, 0)), 0.0);
 	vec3 skyLight = sky * vec3(0.12, 0.29, 0.55);
 
   vec3 viewDirection = normalize(cameraPosition - vPosition);
@@ -547,14 +557,14 @@ void main() {
 
   vec3 col = 0.3 * skyLight * textureColour + ambientStrength * ambient + diffuseStrength * diffuse + specularStrength * specular + diffuseTranslucency + forwardTranslucency;
 
+	//Add a shadow towards root
+	col = mix(0.35*vec3(0.1, 0.25, 0.02), col, frc);
+	
   //Tonemapping
   col = ACESFilm(col);
 
   //Gamma correction 1.0/2.2 = 0.4545...
 	col = pow(col, vec3(0.4545));
-
-	//Add a shadow towards root
-	col = mix(vec3(0.0, 0.2, 0.0), col, frc);
 
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -567,7 +577,7 @@ grassBaseGeometry.translate(0, bladeHeight/2, 0);
 let vertex = new THREE.Vector3();
 let quaternion0 = new THREE.Quaternion();
 let quaternion1 = new THREE.Quaternion();
-let x, y, z, w, angle, sinAngle, rotationAngle;
+let x, y, z, w, angle, sinAngle, rotationAxis;
 
 //Rotate around Y
 angle = 0.05;
@@ -621,7 +631,6 @@ for(let v = 0; v < grassBaseGeometry.attributes.position.array.length; v += 3){
 	grassBaseGeometry.attributes.position.array[v+2] = vertex.z;
 }
 
-grassBaseGeometry.computeFaceNormals();
 grassBaseGeometry.computeVertexNormals();
 var baseMaterial = new THREE.MeshNormalMaterial({side: THREE.DoubleSide});
 var baseBlade = new THREE.Mesh(grassBaseGeometry, baseMaterial);
@@ -813,6 +822,7 @@ function updateSunPosition(){
 var time = 0;
 var lastFrame = Date.now();
 var thisFrame;
+var dT = 0;
 
 function draw(){
 	stats.begin();
